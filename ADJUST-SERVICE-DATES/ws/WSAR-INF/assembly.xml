@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans
+     xmlns="http://www.springframework.org/schema/beans"
+     xmlns:beans="http://www.springframework.org/schema/beans"
+     xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:cc="http://www.capeclear.com/assembly/10"
+     xmlns:cloud="urn:com.workday/esb/cloud/10.0"
+     xmlns:env="http://schemas.xmlsoap.org/soap/envelope/"
+     xmlns:pi="urn:com.workday/picof"
+     xmlns:wd="urn:com.workday/bsvc"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ 
+	<cc:assembly id="WorkdayAssembly" version="20">
+        <cc:workday-in id="AdjustServiceDate" routes-to="RaasErrorCapture">
+            <cc:integration-system name="ADJUST-SERVICE-DATES">
+        <cloud:param name="Worker">
+          <cloud:type>
+            <cloud:class-report-field description="Worker" type="WID" singular="true">f12ded3288c24ed99beee7c48e882b8e</cloud:class-report-field>
+          </cloud:type>
+        </cloud:param>
+        <cloud:attribute-map-service name="IntegrationComments">
+          <cloud:attribute name="IntegrationComments">
+            <cloud:type>
+              <cloud:simple-type>text</cloud:simple-type>
+            </cloud:type>
+          </cloud:attribute>
+        </cloud:attribute-map-service>
+        <cloud:report-service name="ADJUST-SERVICE-DATES_RS">
+          <cloud:report-alias description="Adjust Service Dates Source" name="AdjustServiceDate">
+            <cloud:report-reference description="Adjust Service Dates Source" type="WID">6daea8f90dab10488fd377102c857a3f</cloud:report-reference>
+          </cloud:report-alias>
+        </cloud:report-service>
+      </cc:integration-system>
+        </cc:workday-in>
+        <cc:async-mediation id="RaasErrorCapture" routes-to="AdjustServiceDateReportCall" handle-downstream-errors="true">
+            <cc:steps>
+                <cc:eval id="GetWorkerWID"><cc:expression>props['Worker_WID1'] = lp.getWIDs('Worker').toString().replace('[','')</cc:expression><cc:expression>props['Worker_WID'] = props['Worker_WID1'].toString().replace(']', '')</cc:expression></cc:eval>
+                <cc:log id="Log">
+                    <cc:log-message>
+                        <cc:text>&#xD;
+&#xD;
+&#xD;
+*******************************************************************&#xD;
+@{props['Worker_WID']}&#xD;
+*******************************************************************&#xD;
+&#xD;
+&#xD;
+</cc:text>
+                    </cc:log-message>
+                </cc:log>
+            </cc:steps>
+            <cc:send-error id="RassErrorHandler" rethrow-error="false" routes-to="PutRaasError"/>
+        </cc:async-mediation>
+        <cc:local-out id="PutRaasError" endpoint="vm://wcc/PutIntegrationMessage"><cc:set name="is.message.severity" value="'ERROR'"/><cc:set name="is.message.summary" value="'An Unexoected Error Occured During Report Call. Error Reason: ' + context.errorMessage"/></cc:local-out>
+        <cc:workday-out-rest id="AdjustServiceDateReportCall" routes-response-to="CaptureReportInputs.And.GenerateWebServiceRequest" extra-path="@{intsys.reportService.getExtrapath('AdjustServiceDate')}?Worker!WID=@{props['Worker_WID']}"/>
+        <cc:async-mediation id="CaptureReportInputs.And.GenerateWebServiceRequest" routes-to="EditServiceDateDataWebServiceCall" handle-downstream-errors="true">
+            <cc:steps>
+                <cc:eval id="CaptureReportInputs"><cc:expression>props['Employee_ID'] = parts[0].xpath('wd:Report_Data/wd:Report_Entry/wd:Employee_ID')</cc:expression><cc:expression>props['Commenter_ID'] = parts[0].xpath('wd:Report_Data/wd:Report_Entry/wd:HR_Partner_ID')</cc:expression><cc:expression>props['Continuous_Service_Date'] = parts[0].xpath('wd:Report_Data/wd:Report_Entry/wd:NAME_ADJUSTED_SERVICE_DATE')</cc:expression><cc:expression>props['Comments'] = intsys.getAttribute('IntegrationComments')</cc:expression><cc:expression>props['Time_Off_Service_Date'] = parts[0].xpath('wd:Report_Data/wd:Report_Entry/wd:Time_Off_Service_Date')</cc:expression></cc:eval>
+                <cc:xslt id="EditServiceDate.xsl" url="EditServiceDateData.xsl"/>
+            </cc:steps>
+            <cc:send-error id="ReportInput.Or.WebserviceRequestErrorHandler" routes-to="PutReportInput.Or.WebserviceRequestError"/>
+        </cc:async-mediation>
+        <cc:local-out id="PutReportInput.Or.WebserviceRequestError" endpoint="vm://wcc/PutIntegrationMessage"><cc:set name="is.message.severity" value="'ERROR'"/><cc:set name="is.message.summary" value="'An Unexpected Error Occured during Report Input Or Webservice Request/Call. Error Reason: ' + context.errorMessage"/></cc:local-out>
+        <cc:workday-out-soap id="EditServiceDateDataWebServiceCall" routes-response-to="PutSuccessMessageofEditServiceDateDataWebServiceCall" application="Staffing" version="v23.2"/>
+        <cc:local-out id="PutSuccessMessageofEditServiceDateDataWebServiceCall" endpoint="vm://wcc/PutIntegrationMessage"><cc:set name="is.message.severity" value="'INFO'"/><cc:set name="is.message.summary" value="'Continuous Service Date was update for Employee ' + props['Employee_ID'] + ' as ' + props['Continuous_Service_Date'] + '.'"/></cc:local-out>
+	</cc:assembly>
+
+</beans>
